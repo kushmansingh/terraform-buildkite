@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/hashicorp/terraform/plugin"
-	"github.com/saymedia/terraform-buildkite/buildkite"
+	"github.com/kushmansingh/terraform-buildkite/buildkite"
 )
 
 func main() {
