@@ -223,6 +223,18 @@ func resourcePipeline() *schema.Resource {
 							Type:     schema.TypeBool,
 							Optional: true,
 						},
+						"separate_pull_request_statuses": &schema.Schema{
+							Type:     schema.TypeBool,
+							Optional: true,
+						},
+						"skip_builds_for_existing_commits": &schema.Schema{
+							Type:     schema.TypeBool,
+							Optional: true,
+						},
+						"filter_enabled": &schema.Schema{
+							Type:     schema.TypeBool,
+							Optional: true,
+						},
 						"build_pull_request_forks": &schema.Schema{
 							Type:     schema.TypeBool,
 							Optional: true,
@@ -283,7 +295,7 @@ type repositoryProvider struct {
 	WebhookURL           string
 }
 
-var providerSettingsExcluded = [...]string{"repository", "account"}
+var providerSettingsExcluded = [...]string{"repository", "account", "commit_status_404s", "commit_status_error"}
 
 func (p repositoryProvider) MarshalJSON() ([]byte, error) {
 	// We only need to Unmarshall from the API
