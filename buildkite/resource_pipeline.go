@@ -1,9 +1,11 @@
 package buildkite
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
@@ -68,9 +70,6 @@ func resourcePipeline() *schema.Resource {
 			"env": &schema.Schema{
 				Type:     schema.TypeMap,
 				Optional: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
-				},
 			},
 			"webhook_url": &schema.Schema{
 				Type:     schema.TypeString,
@@ -268,7 +267,7 @@ func resourcePipeline() *schema.Resource {
 
 type Pipeline struct {
 	Id                              string                 `json:"id,omitempty"`
-	Environment                     map[string]string      `json:"env,omitempty"`
+	Environment                     envMap                 `json:"env,omitempty"`
 	Slug                            string                 `json:"slug,omitempty"`
 	WebURL                          string                 `json:"web_url,omitempty"`
 	BuildsURL                       string                 `json:"builds_url,omitempty"`
@@ -287,6 +286,31 @@ type Pipeline struct {
 	Provider                        repositoryProvider     `json:"provider,omitempty"`
 	ProviderSettings                map[string]interface{} `json:"provider_settings,omitempty"`
 	Steps                           []Step                 `json:"steps"`
+}
+
+type envMap map[string]string
+
+func (e *envMap) UnmarshalJSON(data []byte) error {
+	env := map[string]interface{}{}
+
+	d := json.NewDecoder(bytes.NewReader(data))
+	d.UseNumber()
+	if err := d.Decode(&env); err != nil {
+		return err
+	}
+	m := make(envMap)
+	for k, v := range env {
+		switch val := v.(type) {
+		case json.Number:
+			m[k] = val.String()
+		case bool:
+			m[k] = strconv.FormatBool(val)
+		case string:
+			m[k] = val
+		}
+	}
+	*e = m
+	return nil
 }
 
 type repositoryProvider struct {
@@ -485,15 +509,11 @@ func preparePipelineRequestPayload(d *schema.ResourceData) *Pipeline {
 	req.Slug = d.Get("slug").(string)
 	req.Repository = d.Get("repository").(string)
 	req.BranchConfiguration = d.Get("branch_configuration").(string)
-	req.Environment = map[string]string{}
+	req.Environment = d.Get("environment").(envMap)
 	req.SkipQueuedBranchBuilds = d.Get("skip_queued_branch_builds").(bool)
 	req.SkipQueuedBranchBuildsFilter = d.Get("skip_queued_branch_builds_filter").(string)
 	req.CancelRunningBranchBuilds = d.Get("cancel_running_branch_builds").(bool)
 	req.CancelRunningBranchBuildsFilter = d.Get("cancel_running_branch_builds_filter").(string)
-
-	for k, vI := range d.Get("env").(map[string]interface{}) {
-		req.Environment[k] = vI.(string)
-	}
 
 	stepsI := d.Get("step").([]interface{})
 	req.Steps = make([]Step, len(stepsI))
