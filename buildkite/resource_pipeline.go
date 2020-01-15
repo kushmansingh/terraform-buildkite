@@ -152,7 +152,6 @@ func resourcePipeline() *schema.Resource {
 			"bitbucket_settings": &schema.Schema{
 				Type:          schema.TypeList,
 				Optional:      true,
-				Computed:      true,
 				MaxItems:      1,
 				ConflictsWith: []string{"github_settings"},
 				Elem: &schema.Resource{
@@ -197,7 +196,6 @@ func resourcePipeline() *schema.Resource {
 			"github_settings": &schema.Schema{
 				Type:          schema.TypeList,
 				Optional:      true,
-				Computed:      true,
 				MaxItems:      1,
 				ConflictsWith: []string{"bitbucket_settings"},
 				Elem: &schema.Resource{
@@ -205,6 +203,7 @@ func resourcePipeline() *schema.Resource {
 						"trigger_mode": &schema.Schema{
 							Type:     schema.TypeString,
 							Optional: true,
+							Default: "none",
 						},
 						"build_pull_requests": &schema.Schema{
 							Type:     schema.TypeBool,
@@ -322,8 +321,12 @@ type repositoryProvider struct {
 var providerSettingsExcluded = [...]string{"repository", "account", "commit_status_404s", "commit_status_error"}
 
 func (p repositoryProvider) MarshalJSON() ([]byte, error) {
-	// We only need to Unmarshall from the API
-	return []byte("null"), nil
+	m := map[string]interface{}{
+		"id":          p.RepositoryProviderId,
+		"settings":    p.Settings,
+		"webhook_url": p.WebhookURL,
+	}
+	return json.Marshal(m)
 }
 
 func (p *repositoryProvider) UnmarshalJSON(data []byte) error {
@@ -543,31 +546,30 @@ func preparePipelineRequestPayload(d *schema.ResourceData) *Pipeline {
 		}
 	}
 
-	if d.HasChange("github_settings") || d.HasChange("bitbucket_settings") {
-		log.Printf("[INFO] buildkite: RepositoryProviderSettings have changed")
+	githubSettings := d.Get("github_settings").([]interface{})
+	bitbucketSettings := d.Get("bitbucket_settings").([]interface{})
+	req.Provider = repositoryProvider{}
+	var stateSettings map[string]interface{}
+	var stateName string
+	if len(githubSettings) > 0 {
+		req.Provider.RepositoryProviderId = "github"
+		stateSettings = githubSettings[0].(map[string]interface{})
+		stateName = "github_settings"
+	} else if len(bitbucketSettings) > 0 {
+		req.Provider.RepositoryProviderId = "bitbucket"
+		stateSettings = bitbucketSettings[0].(map[string]interface{})
+		stateName = "bitbucket_settings"
+	}
 
-		githubSettings := d.Get("github_settings").([]interface{})
-		bitbucketSettings := d.Get("bitbucket_settings").([]interface{})
-		settings := map[string]interface{}{}
+	req.Provider.Settings = map[string]interface{}{}
+	// If we have either settings
+	if stateName != "" {
 
-		if len(githubSettings) > 0 {
-			s := githubSettings[0].(map[string]interface{})
-
-			for k, vI := range s {
-				if _, ok := d.GetOk(fmt.Sprintf("github_settings.0.%s", k)); ok {
-					settings[k] = vI
-				}
-			}
-		} else if len(bitbucketSettings) > 0 {
-			s := bitbucketSettings[0].(map[string]interface{})
-
-			for k, vI := range s {
-				if _, ok := d.GetOk(fmt.Sprintf("bitbucket_settings.0.%s", k)); ok {
-					settings[k] = vI
-				}
+		for k, vI := range stateSettings {
+			if _, ok := d.GetOk(fmt.Sprintf("%s.0.%s", stateName, k)); ok {
+				req.Provider.Settings[k] = vI
 			}
 		}
-		req.ProviderSettings = settings
 	}
 
 	return req
